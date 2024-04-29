@@ -1,0 +1,9 @@
+solveTime = 0.0
+isOptimal = true
+solution = [0.0 0.0; 0.0 1.0]
+# solution trouvée
+# |----+----+
+# | 1  | 2  |
+# |----+----+
+# | 2  |    |
+# |----+----+

@@ -247,14 +247,14 @@ function findNewCells(G,X,X_w, blackStack, whiteStack, n)
     if firstPaternIsPresent && X_w[i,j] != -1
         push!(whiteStack, (i, j))
         X_w[i,j] = -1
-        return blackStack, whiteStack, X
+        return blackStack, whiteStack, X, X_w
     end
 
     i,j, secondPaternIsPresent = searchSecondPatern(G,X,n)
     if secondPaternIsPresent && X[i,j] != 1
         push!(blackStack, (i, j))
         X[i,j] = 1
-        return blackStack, whiteStack, X
+        return blackStack, whiteStack, X, X_w
     end
 
     i,j = searchDefaultStartPoint(G,X,n)
@@ -268,7 +268,6 @@ function isNotSolution(G,X,n)
         for i1 in 1:n
             for i2 in 1:n
                 if (i1 != i2) && (G[i1, j] == G[i2,j]) && (X[i1, j]+X[i2, j] == 0 )
-                    println(i1,j,i2,j)
                     return true
                 end
             end
@@ -278,7 +277,6 @@ function isNotSolution(G,X,n)
         for j1 in 1:n
             for j2 in 1:n
                 if (j1 != j2) && (G[i, j1] == G[i,j2]) && (X[i, j1]+X[i, j2] == 0 )
-                    println(i,j1,i,j2)
                     return true
                 end
             end
@@ -287,7 +285,6 @@ function isNotSolution(G,X,n)
     for i in 1:(n-1)
         for j in 1:(n-1)
             if (X[i, j] + X[i+1, j] > 1) || (X[i, j] + X[i, j+1] > 1)
-                println(i,j)
                 return true
             end
         end
@@ -296,6 +293,8 @@ function isNotSolution(G,X,n)
 end
 
 function heuristicSolve(G::Matrix{Int})
+
+    start = time()
 
     n = size(G, 1)
     X = zeros(n,n)
@@ -308,33 +307,25 @@ function heuristicSolve(G::Matrix{Int})
     whiteStack = []
 
     while isNotSolution(G, X, n) && k < nb_try
-        println(k)
-        displaySolution(G,X)
         k += 1
 
         treatementHasBeenDone = false
 
         while !isempty(blackStack)
             blackStack, whiteStack, X, X_w = treatBlackCells(G,X,X_w, blackStack, whiteStack, n)
-            treatementHasBeenDone = true
-            println(whiteStack)
-            println(blackStack)
+            treatementHasBeenDone = true      
         end
             
         while !isempty(whiteStack)
             blackStack, whiteStack, X = treatWhiteCells(G,X, blackStack, whiteStack, n)
             treatementHasBeenDone = true
-            println(whiteStack)
-            println(blackStack)
         end
 
         if !treatementHasBeenDone
             blackStack, whiteStack, X, X_w = findNewCells(G,X,X_w, blackStack, whiteStack, n)
-            println(whiteStack)
-            println(blackStack)
         end
     end
-    return k, X
+    return k < nb_try, time() - start, X
 end 
 
 """
@@ -344,14 +335,54 @@ The results are written in "../res/cplex" and "../res/heuristic"
 
 Remark: If an instance has previously been solved (either by cplex or the heuristic) it will not be solved again
 """
+function caseString(i::Int,j::Int,max_width::Int, G::Matrix{Int}, X)
+    if (X[i,j] == 0)
+        return lpad(string(G[i,j]), max_width, " ")
+    else
+        return " "^(max_width)
+    end
+end
+
+function writeSolution(fout, G, X)
+        # Données : la matrice de départ et la matrice solution du PLNE
+        n = size(G, 1)
+        m = size(G, 2)
+    
+        # Calcule la largeur maximale d'une case
+        max_width = 0
+        for i in 1:n
+            for j in 1:m
+                width = length(string(G[i,j]))
+                max_width = max(max_width, width)
+            end
+        end
+        max_width += 1 
+    
+    
+        println(fout, "# solution trouvée")
+        # Affiche la ligne de séparation
+        println(fout, "# |", "-"^(2*max_width), "+", join(["-"^(2*max_width)*"+" for i in 1:(m-1)]))
+    
+        # Affiche chaque ligne du tableau
+        for i in 1:n
+            println(fout, "# |", caseString(i,1,max_width,G,X)," "^(max_width), "|", join([caseString(i,j,max_width,G,X)*" "^(max_width) * "|" for j in 2:m]))
+    
+            # Affiche la ligne de séparation après chaque ligne, sauf la dernière
+            if i < n
+                println(fout, "# |", "-"^(2*max_width), "+", join(["-"^(2*max_width)*"+" for i in 1:(m-1)]))
+            end
+        end
+        println(fout, "# |", "-"^(2*max_width), "+", join(["-"^(2*max_width)*"+" for i in 1:(m-1)]))
+end
+
 function solveDataSet()
 
     dataFolder = "../data/"
     resFolder = "../res/"
 
     # Array which contains the name of the resolution methods
-    resolutionMethod = ["cplex"]
-    #resolutionMethod = ["cplex", "heuristique"]
+    # resolutionMethod = ["cplex"]
+    resolutionMethod = ["cplex", "heuristique"]
 
     # Array which contains the result folder of each resolution method
     resolutionFolder = resFolder .* resolutionMethod
@@ -393,9 +424,12 @@ function solveDataSet()
                     # Solve it and get the results
                     isOptimal, resolutionTime, res = cplexSolve(G)
                     
+                    println(fout, "solveTime = ", resolutionTime) 
+                    println(fout, "isOptimal = ", isOptimal)
                     # If a solution is found, write it
                     if isOptimal
-                        println(fout, "res =", res)  
+                        println(fout, "solution = ", res)
+                        writeSolution(fout,G,res)
                     end
 
                 # If the method is one of the heuristics
@@ -403,40 +437,19 @@ function solveDataSet()
                     
                     isSolved = false
 
-                    # Start a chronometer 
-                    startingTime = time()
                     
-                    # While the grid is not solved and less than 100 seconds are elapsed
-                    while !isOptimal && resolutionTime < 100
-                        
-                        # TODO 
-                        println("In file resolution.jl, in method solveDataSet(), TODO: fix heuristicSolve() arguments and returned values")
-                        
-                        # Solve it and get the results
-                        isOptimal, resolutionTime = heuristicSolve()
+                    isOptimal, resolutionTime, X_res_heuristic = heuristicSolve(G)
 
-                        # Stop the chronometer
-                        resolutionTime = time() - startingTime
-                        
-                    end
-
+                    println(fout, "solveTime = ", resolutionTime) 
+                    println(fout, "isOptimal = ", isOptimal)
+                    println(fout, "solution = ", X_res_heuristic)
                     # Write the solution (if any)
                     if isOptimal
-
-                        # TODO
-                        println("In file resolution.jl, in method solveDataSet(), TODO: write the heuristic solution in fout")
-                        
+                        writeSolution(fout,G,X_res_heuristic)
                     end 
                 end
-
-                println(fout, "solveTime = ", resolutionTime) 
-                println(fout, "isOptimal = ", isOptimal)
-                
-                # TODO
-                println("In file resolution.jl, in method solveDataSet(), TODO: write the solution in fout") 
                 close(fout)
             end
-
 
             # Display the results obtained with the method on the current instance
             #include(outputFile)
